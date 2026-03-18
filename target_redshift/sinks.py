@@ -37,6 +37,8 @@ class RedshiftSink(SQLSink):
 
     connector_class = RedshiftConnector
     MAX_SIZE_DEFAULT = 50000
+    _prepared_tables: set = set()
+    _prepared_schemas: set = set()
 
     def __init__(self, *args, **kwargs) -> None:  # noqa: ANN002, ANN003
         """Initialize SQL Sink. See super class for more details."""
@@ -87,9 +89,12 @@ class RedshiftSink(SQLSink):
             self.append_only = True
         else:
             self.append_only = False
+        if self.full_table_name in RedshiftSink._prepared_tables:
+            return
         with self.connector.connect_cursor() as cursor:
-            if self.schema_name:
+            if self.schema_name and self.schema_name not in RedshiftSink._prepared_schemas:
                 self.connector.prepare_schema(self.schema_name, cursor=cursor)
+                RedshiftSink._prepared_schemas.add(self.schema_name)
             self.connector.prepare_table(
                 full_table_name=self.full_table_name,
                 schema=self.conformed_schema,
@@ -98,6 +103,7 @@ class RedshiftSink(SQLSink):
                 as_temp_table=False,
             )
             self.connector.grant_privileges(self.schema_name, cursor=cursor)
+        RedshiftSink._prepared_tables.add(self.full_table_name)
 
     def generate_temp_table_name(self) -> str:
         """Uuid temp table name."""

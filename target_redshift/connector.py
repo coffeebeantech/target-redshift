@@ -317,13 +317,23 @@ class RedshiftConnector(SQLConnector):
 
         if not column_exists:
             self._create_empty_column(
-                # We should migrate every function to use Table
-                # instead of having to know what the function wants
                 full_table_name=full_table_name,
                 column_name=column_name,
                 sql_type=sql_type,
                 cursor=cursor,
             )
+            return
+
+        if column_object is not None:
+            current_type = column_object.type
+            compatible_type = self.merge_sql_types([current_type, sql_type])
+            if str(compatible_type) != str(current_type) and self.allow_column_alter:
+                self._adapt_column_type(
+                    full_table_name=full_table_name,
+                    column_name=column_name,
+                    sql_type=sql_type,
+                    cursor=cursor,
+                )
             return
 
         self._adapt_column_type(
