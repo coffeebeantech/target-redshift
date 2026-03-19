@@ -301,7 +301,8 @@ class RedshiftSink(SQLSink):
             COMPUPDATE OFF STATUPDATE OFF
         """,
         )
-        columns = ", ".join([f'"{column}"' for column in self.conformed_schema["properties"]])
+        table_columns = {c.name for c in table.columns}
+        columns = ", ".join([f'"{column}"' for column in self.conformed_schema["properties"] if column in table_columns])
         # Step 4: Load into the stage table
         copy_sql = f"""
             COPY {self.connector.quote(str(table))} ({columns})

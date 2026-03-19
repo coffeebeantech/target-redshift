@@ -127,15 +127,14 @@ class RedshiftConnector(SQLConnector):
             table = self.get_table(full_table_name=full_table_name)
             columns = {column.name: column for column in table.columns}
             for property_name, property_def in schema["properties"].items():
-                column_object = None
-                if property_name in columns:
-                    column_object = columns[property_name]
+                if property_name not in columns:
+                    continue
                 self.prepare_column(
                     full_table_name=table.fullname,
                     column_name=property_name,
                     sql_type=self.to_sql_type(property_def),
                     cursor=cursor,
-                    column_object=column_object,
+                    column_object=columns[property_name],
                 )
         else:
             table = self.create_empty_table(
