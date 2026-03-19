@@ -191,8 +191,10 @@ class RedshiftSink(SQLSink):
         Returns:
             True if table exists, False if not, None if unsure or undetectable.
         """
-        self.write_to_s3(records)
-        self.copy_to_redshift(table, cursor)
+        table_columns = {c.name for c in table.columns}
+        valid_columns = [col for col in self.conformed_schema["properties"] if col in table_columns]
+        self.write_to_s3(records, valid_columns)
+        self.copy_to_redshift(table, cursor, valid_columns)
         return True
 
     def upsert(
@@ -271,10 +273,10 @@ class RedshiftSink(SQLSink):
             for record in records
         ]
 
-    def write_to_s3(self, records: Iterable[dict[str, Any]]) -> None:
+    def write_to_s3(self, records: Iterable[dict[str, Any]], columns: list[str] | None = None) -> None:
         """Write the csv file to s3."""
         records = self.format_records_as_csv(records)
-        keys: list[str] = list(self.conformed_schema["properties"].keys())
+        keys: list[str] = columns if columns is not None else list(self.conformed_schema["properties"].keys())
 
         msg = f"writing {len(records)} records to {self.s3_uri()}"
         self.logger.info(msg)
@@ -288,7 +290,7 @@ class RedshiftSink(SQLSink):
             )
             writer.writerows(records)
 
-    def copy_to_redshift(self, table: sqlalchemy.Table, cursor: Cursor) -> None:
+    def copy_to_redshift(self, table: sqlalchemy.Table, cursor: Cursor, valid_columns: list[str] | None = None) -> None:
         """Copy the s3 csv file to redshift."""
         copy_credentials = f"IAM_ROLE '{self.config['aws_redshift_copy_role_arn']}'"
 
@@ -301,8 +303,12 @@ class RedshiftSink(SQLSink):
             COMPUPDATE OFF STATUPDATE OFF
         """,
         )
-        table_columns = {c.name for c in table.columns}
-        columns = ", ".join([f'"{column}"' for column in self.conformed_schema["properties"] if column in table_columns])
+        if valid_columns is not None:
+            col_list = valid_columns
+        else:
+            table_columns = {c.name for c in table.columns}
+            col_list = [col for col in self.conformed_schema["properties"] if col in table_columns]
+        columns = ", ".join([f'"{column}"' for column in col_list])
         # Step 4: Load into the stage table
         copy_sql = f"""
             COPY {self.connector.quote(str(table))} ({columns})
